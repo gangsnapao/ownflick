@@ -4,6 +4,16 @@
 
 只提供**信息流**和**媒体库**两个主要入口，已停用原首页、音乐电台、在线下载和独立合集页面。
 
+## 界面预览
+
+<p align="center">
+  <img src="docs/screenshots/抖音式信息流视频播放.png" width="230" alt="抖音式信息流视频播放">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/工具抽屉.png" width="230" alt="工具抽屉">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/清屏播放.png" width="230" alt="清屏播放">
+</p>
+
 ## 功能特性
 
 ### 信息流播放（类抖音体验）
