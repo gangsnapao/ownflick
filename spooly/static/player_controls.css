@@ -1,0 +1,125 @@
+/* Shared, document-matched controls for the two full-screen media players. */
+.player-progress-controls {
+  height: 44px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.player-progress-track-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+}
+.player-progress-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  touch-action: none;
+  z-index: 2;
+}
+.player-progress-input:disabled { cursor: default; }
+.player-progress-track,
+.player-progress-fill {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  border-radius: 4px;
+  pointer-events: none;
+  transition: height 160ms ease;
+}
+.player-progress-track { right: 0; background: rgba(255, 255, 255, 0.24); }
+.player-progress-fill { width: 0; background: #fff; z-index: 1; }
+.player-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+  transform: translateY(-50%) scale(0);
+  transition: transform 160ms ease;
+}
+.player-progress-controls.is-seeking .player-progress-track,
+.player-progress-controls.is-seeking .player-progress-fill { height: 8px; }
+.player-progress-controls.is-seeking .player-progress-fill::after,
+.player-progress-track-wrap:focus-within .player-progress-fill::after {
+  transform: translateY(-50%) scale(1);
+}
+.player-progress-track-wrap:focus-within {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.player-seek-preview {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font: 600 clamp(18px, 4.5vw, 26px)/1.3 system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 2;
+}
+.player-seek-preview[hidden] { display: none; }
+.player-clean-exit {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 60;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font: 500 12px/1.2 system-ui, -apple-system, sans-serif;
+  opacity: 0.35;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 180ms ease;
+}
+.player-clean-exit svg { width: 18px; height: 18px; }
+.player-clean-exit:hover,
+.player-clean-exit:focus-visible { opacity: 0.9; }
+.player-clean-exit:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.player-clean-exit[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .player-progress-track, .player-progress-fill, .player-progress-fill::after,
+  .player-clean-exit { transition: none; }
+}
+
+/* Module F: compact clean-mode exit on mobile / touch (≥40px hit area kept). */
+@media (max-width: 600px), (pointer: coarse) {
+  .player-clean-exit {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0 10px;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .player-clean-exit::after { content: ''; position: absolute; inset: -3px; border-radius: 999px; }
+  .player-clean-exit svg { width: 15px; height: 15px; }
+}

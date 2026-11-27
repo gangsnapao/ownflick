@@ -1,0 +1,43 @@
+from spooly.services.library import normalize_exclusions, normalize_source_id
+
+
+def normalize_media_sources(config, cli_sources=None, media_root=None):
+    raw_sources = cli_sources or config.get('media_sources') or []
+    sources = []
+    if isinstance(raw_sources, dict):
+        raw_sources = [{'id': key, 'path': value, 'name': key} for key, value in raw_sources.items()]
+    if isinstance(raw_sources, list):
+        for item in raw_sources:
+            if not isinstance(item, dict):
+                continue
+            source_id = normalize_source_id(item.get('id') or item.get('name'))
+            path = str(item.get('path') or '').strip()
+            if not path:
+                continue
+            sources.append({
+                'id': source_id,
+                'name': str(item.get('name') or source_id).strip() or source_id,
+                'path': path,
+                'exclude': normalize_exclusions(item.get('exclude'), field=f'media_sources[{source_id}].exclude'),
+            })
+    if media_root and not sources:
+        # An explicit media_sources list is authoritative: only fall back to the
+        # CLI/env media root when nothing is configured, so folders removed in
+        # the UI stay removed after a restart.
+        sources.append({'id': 'default', 'name': 'Default', 'path': str(media_root)})
+    return sources
+
+
+def similarity_enabled(experiments=None, embedding=None) -> bool:
+    """Resolve the startup switch without importing vector runtime code."""
+    if experiments is not None and not isinstance(experiments, dict):
+        raise ValueError('experiments must be a configuration object')
+    similarity = (experiments or {}).get('similarity', {})
+    if not isinstance(similarity, dict):
+        raise ValueError('experiments.similarity must be a configuration object')
+    if 'enabled' in similarity:
+        if not isinstance(similarity['enabled'], bool):
+            raise ValueError('experiments.similarity.enabled must be a boolean')
+        return similarity['enabled']
+    # Older configurations enabled the feature with embedding.enabled.
+    return isinstance(embedding, dict) and embedding.get('enabled') is True

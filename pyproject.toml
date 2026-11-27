@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "spooly"
+version = "0.8.51"
+description = "A private, self-hosted feed for your videos, photos, and music"
+authors = ["Oddloaf <hello@oddloaf.dev>"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/oddloafhq/ownflick"
+repository = "https://github.com/oddloafhq/ownflick"
+keywords = ["ownflick", "spooly", "self-hosted", "media-server"]
+
+[tool.poetry.scripts]
+spooly = 'spooly.run:main'
+ownflick = 'spooly.run:main'
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+flask = "^3.1.3"
+waitress = "^3.0.2"
+pyyaml = "^6.0"
+requests = "^2.33.0"
+pillow = "^12.3.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

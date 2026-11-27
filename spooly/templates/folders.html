@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ static_asset('folders.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="folder-browser" id="folder-browser">
+  <header class="folder-page-header">
+    <div>
+      <p class="folder-overline">OWNFLICK LIBRARY</p>
+      <h1>文件夹</h1>
+      <p class="folder-description">按媒体来源浏览目录，直接播放当前目录中的视频和图片。</p>
+    </div>
+    <a class="folder-library-link" href="/library"><i data-feather="grid" aria-hidden="true"></i><span>媒体库</span></a>
+  </header>
+
+  <nav class="folder-breadcrumbs" id="folder-breadcrumbs" aria-label="文件夹路径"></nav>
+
+  <section class="folder-play-toolbar" aria-label="起播选项">
+    <div class="folder-play-settings">
+      <div class="folder-order" role="group" aria-label="播放顺序">
+        <button type="button" data-order="sequential" aria-pressed="true">顺序</button>
+        <button type="button" data-order="random" aria-pressed="false">随机</button>
+      </div>
+      <label class="folder-recursive-option">
+        <input type="checkbox" id="folder-recursive" checked>
+        <span>包含子文件夹</span>
+      </label>
+    </div>
+    <button type="button" class="folder-play-current" id="folder-play-current" disabled>
+      <i data-feather="play" aria-hidden="true"></i><span>播放此文件夹</span>
+    </button>
+  </section>
+
+  <div class="folder-page-state" id="folder-page-state" role="status" aria-live="polite"></div>
+  <section class="folder-grid" id="folder-grid" aria-label="子文件夹"></section>
+  <div class="folder-page-actions">
+    <button type="button" class="folder-more" id="folder-more" hidden>加载更多</button>
+  </div>
+</main>
+{% endblock %}
+
+{% block extra_body %}
+<script src="{{ static_asset('folders_page_controller.js') }}"></script>
+{% endblock %}

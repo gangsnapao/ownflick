@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ static_asset('flow.css') }}">
+{% endblock %}
+
+{% block content %}
+<div id="container" role="region" aria-label="图片视频信息流">
+  <div id="feed-container">
+    <div id="video-start-cover" class="video-start-cover" aria-hidden="true">
+      <div class="video-start-cover-spinner" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <div id="flow-state" class="flow-state" data-kind="loading" aria-live="polite" aria-hidden="true">
+    <div class="flow-state-card">
+      <div class="flow-state-spinner" aria-hidden="true"></div>
+      <div id="flow-state-title" class="flow-state-title">正在准备媒体</div>
+      <div id="flow-state-detail" class="flow-state-detail"></div>
+      <div id="flow-state-actions" class="flow-state-actions" hidden>
+        <button id="flow-state-retry" class="flow-state-btn primary" type="button" hidden>重试</button>
+        <button id="flow-state-next" class="flow-state-btn primary" type="button" hidden>下一条</button>
+        <a id="flow-state-library" class="flow-state-btn" href="/library" hidden>打开媒体库</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay-layer"></div>
+  <a id="flow-mode" class="flow-mode" href="/flow" aria-label="返回全库信息流" hidden>随机播放 <span aria-hidden="true">×</span></a>
+  <div id="flow-hud" aria-live="polite"></div>
+  <button id="back-to-latest" class="back-to-latest" type="button" hidden>回到最新 ↑</button>
+  <div id="speed-menu" class="speed-menu" hidden>
+    <div class="speed-menu-card" role="menu" aria-label="选择播放速度">
+      <span class="speed-menu-title">倍速</span>
+      <button type="button" class="speed-menu-btn" data-rate="0.5" role="menuitem">0.5x</button>
+      <button type="button" class="speed-menu-btn active" data-rate="1" role="menuitem">1x</button>
+      <button type="button" class="speed-menu-btn" data-rate="1.25" role="menuitem">1.25x</button>
+      <button type="button" class="speed-menu-btn" data-rate="1.5" role="menuitem">1.5x</button>
+      <button type="button" class="speed-menu-btn" data-rate="2" role="menuitem">2x</button>
+    </div>
+  </div>
+
+  <div id="play-status-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+    </svg>
+  </div>
+
+  <div id="custom-controls" hidden>
+    <span class="time-display" id="time-current" aria-hidden="true">00:00</span>
+    <div class="progress-container">
+      <input type="range" id="video-progress" min="0" max="100" step="0.01" value="0" aria-label="播放进度" aria-valuetext="00:00 / 00:00" disabled>
+      <div class="progress-track" aria-hidden="true"></div>
+      <div class="progress-fill" id="progress-fill" aria-hidden="true"></div>
+    </div>
+    <span class="time-display" id="time-total" aria-hidden="true">00:00</span>
+    <output id="seek-preview" class="seek-preview" aria-hidden="true" hidden>00:00 / 00:00</output>
+  </div>
+
+  <div id="collection-playback" class="collection-playback" hidden>
+    <button id="collection-playback-open" type="button" aria-label="打开合集选集">
+      <i data-feather="layers" aria-hidden="true"></i>
+      <span class="collection-playback-name" id="collection-playback-name"></span>
+      <span class="collection-playback-count" id="collection-playback-count"></span>
+      <i data-feather="chevron-up" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <div id="collection-playlist" class="collection-playlist" aria-hidden="true" hidden>
+    <section class="collection-playlist-sheet" role="dialog" aria-modal="true" aria-labelledby="collection-playlist-title">
+      <div class="collection-playlist-handle" aria-hidden="true"></div>
+      <header class="collection-playlist-header">
+        <div>
+          <h2 id="collection-playlist-title"></h2>
+          <p id="collection-playlist-meta" role="status" aria-live="polite"></p>
+        </div>
+        <button id="collection-playlist-close" class="collection-playlist-close" type="button" aria-label="关闭选集">
+          <i data-feather="x" aria-hidden="true"></i>
+        </button>
+      </header>
+      <div id="collection-playlist-items" class="collection-playlist-items"></div>
+      <button id="collection-playlist-more" class="collection-playlist-more" type="button" hidden>加载更多</button>
+    </section>
+  </div>
+
+  <!-- R3：右侧控件抽屉把手（默认收起，点击弹出/收起） -->
+  <div id="controls-drawer-scrim" class="controls-drawer-scrim" hidden></div>
+  <!-- 清屏退出：仅在清屏播放时显示，闲置同样降至 30% -->
+  <button id="clean-mode-exit" class="clean-mode-exit" type="button" aria-label="退出清屏" hidden>
+    <i data-feather="eye" aria-hidden="true"></i><span>退出清屏</span>
+  </button>
+  <!-- 清屏播放：常驻于抽屉开关之前（上方），不被开关遮挡 -->
+  <button id="clean-mode-btn" class="controls-quick" type="button" title="清屏播放" aria-label="清屏播放" aria-pressed="false">
+    <i data-feather="eye-off" aria-hidden="true"></i>
+  </button>
+  <button id="controls-drawer-toggle" class="controls-drawer-toggle" type="button" aria-label="展开工具栏" aria-expanded="false" aria-controls="controls">
+    <i data-feather="chevrons-up" aria-hidden="true"></i>
+  </button>
+
+  <div class="controls-sidebar" id="controls">
+    <div class="image-tool-wrap" id="speed-tool-wrap">
+      <div class="zoom-options speed-options" id="speed-options">
+        <button type="button" class="zoom-btn" data-rate="0.5">0.5x</button>
+        <button type="button" class="zoom-btn active" data-rate="1">1x</button>
+        <button type="button" class="zoom-btn" data-rate="1.25">1.25x</button>
+        <button type="button" class="zoom-btn" data-rate="1.5">1.5x</button>
+        <button type="button" class="zoom-btn" data-rate="2">2x</button>
+      </div>
+      <button type="button" class="action-btn speed-btn" id="speed-btn" title="播放速度" aria-label="播放速度，当前 1 倍" aria-expanded="false">1x</button>
+    </div>
+
+    <div class="image-tool-wrap" id="magnifier-tool-wrap" hidden>
+      <div class="zoom-options" id="zoom-options">
+        <button type="button" class="zoom-btn active" data-level="2.5">2.5x</button>
+        <button type="button" class="zoom-btn" data-level="5">5x</button>
+      </div>
+      <button type="button" class="action-btn" id="magnifier-toggle" title="放大镜">
+        <i data-feather="search"></i>
+      </button>
+    </div>
+
+    <button type="button" class="action-btn" id="like-btn" data-value="" aria-label="点赞" title="点赞" aria-pressed="false" disabled>
+      <svg class="heart-outline" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+      <svg class="heart-filled" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+    </button>
+
+    <button type="button" class="action-btn" id="favorite-btn" data-value="" aria-label="收藏" title="收藏" aria-pressed="false" disabled>
+      <i data-feather="star" aria-hidden="true"></i>
+    </button>
+
+    <button type="button" class="action-btn" id="mute-btn" title="静音" aria-label="静音" aria-pressed="false">
+      <svg class="sound-on-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+      <svg class="sound-off-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+    </button>
+
+    <button type="button" class="action-btn" id="collection-btn" hidden title="加入合集">
+      <i data-feather="bookmark"></i>
+      <span class="collection-count" id="collection-count">0</span>
+    </button>
+
+    <a href="#" class="action-btn" id="info-btn" title="媒体详情" aria-label="媒体详情">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+    </a>
+
+    <button type="button" class="action-btn" id="flow-shuffle-button" title="重新打乱全库" aria-label="重新打乱全库">
+      <i data-feather="shuffle"></i>
+    </button>
+
+    <!-- 声音开关：收纳进抽屉（静音时提示开声） -->
+    <button type="button" class="action-btn sound-prompt-btn" id="sound-prompt" title="点击开声" hidden>
+      🔊
+    </button>
+  </div>
+
+  <div class="magnifier" id="magnifier">
+    <div class="mag-badge" id="mag-badge">2.5x</div>
+  </div>
+</div>
+
+<div id="collection-modal" class="collection-modal" aria-hidden="true">
+  <div class="collection-modal-card">
+    <div class="coll-drag-handle"></div>
+    <div class="collection-modal-header">
+      <div class="collection-modal-title-row">
+        <h3>加入合集</h3>
+        <button id="collection-modal-close" type="button" class="collection-modal-close">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+      <div id="collection-modal-meta" class="collection-modal-meta">尚未加入合集</div>
+    </div>
+    <div id="collection-list" class="collection-modal-list"></div>
+    <div class="collection-modal-create">
+      <input id="collection-name-input" type="text" maxlength="80" placeholder="新合集名称" />
+      <button id="collection-create-btn" type="button">创建</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+  window.__SPOOLY_FLOW_BOOT__ = {
+    collection: {{ (flow_collection | default(None)) | tojson }},
+    folder: {{ (flow_folder | default(None)) | tojson }},
+  };
+</script>
+<script src="{{ static_asset('flow_ui_shared.js') }}"></script>
+<script src="{{ static_asset('collection_picker.js') }}"></script>
+<script src="{{ static_asset('flow_state_controller.js') }}"></script>
+<script src="{{ static_asset('flow_session.js') }}"></script>
+<script src="{{ static_asset('flow_actions_shared.js') }}"></script>
+<script src="{{ static_asset('flow_media_actions_controller.js') }}"></script>
+<script src="{{ static_asset('flow_reactions_controller.js') }}"></script>
+<script src="{{ static_asset('hammer.min.js') }}"></script>
+<script src="{{ static_asset('flow_progress_controller.js') }}"></script>
+<script src="{{ static_asset('caption_format.js') }}"></script>
+<script src="{{ static_asset('flow_page_controller.js') }}"></script>
+{% endblock %}

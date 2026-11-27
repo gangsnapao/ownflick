@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ static_asset('library.css') }}">
+<link rel="stylesheet" href="{{ static_asset('player_controls.css') }}">
+<link rel="stylesheet" href="{{ static_asset('library_management.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="library-management-page">
+  <header class="library-management-header">
+    <div>
+      <p class="library-management-kicker">本地图片与视频</p>
+      <h1>媒体库</h1>
+      <p class="library-management-intro">导入、浏览和整理你的媒体。点击缩略图即可预览。</p>
+    </div>
+    <a class="library-management-button" href="/flow"><i data-feather="play" aria-hidden="true"></i><span>返回信息流</span></a>
+  </header>
+
+  <section class="library-management-tools" aria-label="媒体库管理">
+    <div class="library-management-actions">
+      <button id="library-import" class="library-management-button is-primary" type="button"><i data-feather="upload" aria-hidden="true"></i><span>导入图片和视频</span></button>
+      <input id="library-import-files" name="files" type="file" accept="image/*,video/*,.heic,.heif,.avif,.mkv,.mov,.m4v,.webm,.avi" multiple hidden aria-label="选择要导入的图片和视频，可多选">
+      <button id="library-sync" class="library-management-button" type="button"><i data-feather="refresh-cw" aria-hidden="true"></i><span>重新扫描</span></button>
+      <button id="library-folders" class="library-management-button" type="button"><i data-feather="folder" aria-hidden="true"></i><span>文件夹管理</span></button>
+      <button id="library-trash" class="library-management-button" type="button"><i data-feather="archive" aria-hidden="true"></i><span>回收站</span></button>
+      <button id="library-batch" class="library-management-button" type="button" aria-pressed="false"><i data-feather="check-square" aria-hidden="true"></i><span>批量管理</span></button>
+    </div>
+    <p class="library-management-help">可一次选择多个文件导入；已放入媒体目录的文件，可通过“重新扫描”更新。</p>
+    <div id="library-management-feedback" class="library-management-feedback" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    <details id="library-import-results" class="library-import-results" hidden>
+      <summary id="library-import-summary">导入结果</summary>
+      <ul id="library-import-list" aria-label="逐文件导入结果"></ul>
+    </details>
+  </section>
+
+  <section id="library-collections" class="library-collections" aria-label="合集播放" hidden>
+    <div class="library-collections-head">
+      <h2>合集</h2>
+      <span class="library-collections-hint">点赞与收藏自动归档，点击卡片单独播放</span>
+    </div>
+    <div id="library-collections-strip" class="library-collections-strip"></div>
+  </section>
+
+  <section class="library-toolbar-wrap" aria-label="浏览和搜索">
+    <div id="library-toolbar" class="library-toolbar is-search-open{% if request.args.get('q', '') %} is-searching{% endif %}">
+      <div id="library-search" class="library-search" role="search">
+        <i data-feather="search" class="library-search-icon" aria-hidden="true"></i>
+        <label class="sr-only" for="library-search-input">搜索媒体库</label>
+        <input id="library-search-input" type="search" maxlength="200" autocomplete="off" spellcheck="false" placeholder="搜索文件名、文案或路径" value="{{ request.args.get('q', '') }}">
+        <button id="library-search-clear" class="library-search-clear" type="button" aria-label="清除搜索" title="清除搜索"{% if not request.args.get('q', '') %} hidden{% endif %}><i data-feather="x" aria-hidden="true"></i></button>
+      </div>
+      <div class="mode-tabs" id="mode-tabs" role="group" aria-label="媒体筛选">
+        <button type="button" class="mode-tab" data-mode="all">全部媒体</button>
+        <button type="button" class="mode-tab" data-mode="image_random">随机图片</button>
+        <button type="button" class="mode-tab" data-mode="video_latest">最新视频</button>
+        <button type="button" class="mode-tab" data-mode="big_files">大文件</button>
+      </div>
+      <button type="button" id="library-caption-mode" class="library-management-button library-caption-mode" aria-pressed="false">标题：文案</button>
+      <button type="button" id="library-folder-filter" class="library-management-button library-caption-mode" aria-pressed="false">📁 文件夹</button>
+    </div>
+  </section>
+
+  <div id="library-folder-chip" class="library-folder-chip" hidden>
+    <span id="library-folder-chip-text"></span>
+    <button type="button" id="library-folder-chip-clear" class="library-management-icon-button" aria-label="清除文件夹筛选" title="清除文件夹筛选"><i data-feather="x" aria-hidden="true"></i></button>
+  </div>
+  <div id="library-batch-bar" class="library-batch-bar" hidden>
+    <span id="library-batch-count" class="library-batch-count">已选 0 项</span>
+    <div class="library-batch-actions">
+      <button id="library-batch-select-all" class="library-management-button" type="button">全选</button>
+      <button id="library-batch-invert" class="library-management-button" type="button">反选</button>
+      <button id="library-batch-collection" class="library-management-button" type="button" disabled>加入合集</button>
+      <button id="library-batch-trash" class="library-management-button" type="button" disabled>移到回收站</button>
+      <button id="library-batch-purge" class="library-management-button is-danger" type="button" disabled>永久删除</button>
+      <button id="library-batch-exit" class="library-management-button" type="button">取消</button>
+    </div>
+  </div>
+
+  <section id="library-grid" class="masonry-grid" aria-label="图片和视频网格"></section>
+  <div id="library-loading" class="library-loading" aria-live="polite">
+    <div id="library-status-text">正在加载媒体…</div>
+    <div id="library-status-actions" class="library-status-actions" hidden>
+      <button id="library-retry" class="library-status-action" type="button" hidden>重试加载</button>
+      <button id="library-clear-search" class="library-status-action" type="button" hidden>清除搜索</button>
+    </div>
+  </div>
+  <div id="library-sentinel" aria-hidden="true" style="height: 1px;"></div>
+</main>
+
+<dialog id="library-delete-dialog" class="library-management-dialog" aria-labelledby="library-delete-heading" aria-describedby="library-delete-description">
+  <div class="library-dialog-heading"><h2 id="library-delete-heading">移到回收站？</h2></div>
+  <p id="library-delete-name" class="library-delete-name"></p>
+  <p id="library-delete-description">该资源将从媒体库和信息流中移除，你可以在回收站恢复。此操作不会永久删除文件。</p>
+  <p id="library-delete-error" class="library-dialog-error" role="alert" hidden></p>
+  <div class="library-dialog-actions">
+    <button id="library-delete-cancel" class="library-management-button" type="button">取消</button>
+    <button id="library-delete-confirm" class="library-management-button is-danger" type="button">移到回收站</button>
+  </div>
+</dialog>
+
+<dialog id="library-batch-dialog" class="library-management-dialog" aria-labelledby="library-batch-dialog-heading" aria-describedby="library-batch-dialog-text">
+  <div class="library-dialog-heading"><h2 id="library-batch-dialog-heading">批量操作</h2></div>
+  <p id="library-batch-dialog-text" class="library-delete-name"></p>
+  <p id="library-batch-dialog-warning"></p>
+  <p id="library-batch-dialog-error" class="library-dialog-error" role="alert" hidden></p>
+  <div class="library-dialog-actions">
+    <button id="library-batch-dialog-cancel" class="library-management-button" type="button">取消</button>
+    <button id="library-batch-dialog-confirm" class="library-management-button is-danger" type="button">确认</button>
+  </div>
+</dialog>
+
+<dialog id="library-folders-dialog" class="library-management-dialog library-folders-dialog" aria-labelledby="library-folders-heading">
+  <div class="library-dialog-heading">
+    <div>
+      <h2 id="library-folders-heading">文件夹管理</h2>
+      <p>管理媒体库扫描的文件夹（挂载点）。改动立即生效并保存，重启后仍然保留；不会删除磁盘上的任何文件。</p>
+    </div>
+    <button id="library-folders-close" class="library-management-icon-button" type="button" aria-label="关闭文件夹管理" title="关闭"><i data-feather="x"></i></button>
+  </div>
+  <ul id="library-folders-list" class="library-folders-list" aria-label="已挂载的文件夹"></ul>
+  <form id="library-folders-form" class="library-folders-form">
+    <h3 id="library-folders-form-title">添加文件夹</h3>
+    <label class="library-folders-field">路径（绝对路径）
+      <input id="library-folders-path" type="text" required spellcheck="false" placeholder="/volume2/xvideo/短视频">
+    </label>
+    <label class="library-folders-field">显示名称（可选）
+      <input id="library-folders-name" type="text" maxlength="80" placeholder="短视频">
+    </label>
+    <details class="library-folders-details">
+      <summary>排除规则（可选，每行一条，如 folder.jpg）</summary>
+      <textarea id="library-folders-exclude" rows="3" spellcheck="false"></textarea>
+    </details>
+    <div class="library-folders-form-actions">
+      <button id="library-folders-submit" class="library-management-button is-primary" type="submit">添加</button>
+      <button id="library-folders-cancel" class="library-management-button" type="button" hidden>取消编辑</button>
+    </div>
+  </form>
+  <section class="library-privacy" aria-label="隐私文件夹">
+    <h3 class="library-privacy-title">隐私文件夹
+      <span class="library-privacy-hint">隐私内容不进入信息流、媒体库网格与系统合集，只能在文件夹内播放</span>
+    </h3>
+    <ul id="library-privacy-list" class="library-privacy-list" aria-label="已标记的隐私文件夹"></ul>
+    <button id="library-privacy-add" class="library-management-button" type="button" aria-expanded="false">添加隐私文件夹</button>
+    <div id="library-privacy-picker" class="library-privacy-picker" hidden>
+      <div class="library-privacy-picker-bar">
+        <button id="library-privacy-up" class="library-management-button" type="button">返回上级</button>
+        <span id="library-privacy-crumbs" class="library-privacy-crumbs"></span>
+      </div>
+      <ul id="library-privacy-folders" class="library-privacy-folders" aria-label="可标记为隐私的文件夹"></ul>
+    </div>
+  </section>
+  <p id="library-folders-status" class="library-management-feedback" role="status" aria-live="polite" hidden></p>
+</dialog>
+
+<dialog id="library-collection-dialog" class="library-management-dialog library-collection-dialog" aria-labelledby="library-collection-heading">
+  <header class="library-management-dialog-header">
+    <div><h2 id="library-collection-heading">加入合集</h2><p id="library-collection-text">把选中的文件加入合集。</p></div>
+    <button id="library-collection-close" class="library-management-icon-button" type="button" aria-label="关闭"><i data-feather="x" aria-hidden="true"></i></button>
+  </header>
+  <ul id="library-collection-list" class="library-privacy-list" aria-label="合集列表"></ul>
+  <div class="library-collection-create">
+    <input id="library-collection-name" type="text" placeholder="新合集名称" maxlength="60" aria-label="新合集名称" />
+    <button id="library-collection-create" class="library-management-button" type="button">新建并加入</button>
+  </div>
+  <p id="library-collection-error" class="library-management-feedback" role="alert" hidden></p>
+</dialog>
+
+<dialog id="library-folder-dialog" class="library-management-dialog library-folder-dialog" aria-labelledby="library-folder-heading">
+  <header class="library-management-dialog-header">
+    <div><h2 id="library-folder-heading">按文件夹浏览</h2><p>选择文件夹后，媒体库只显示该文件夹内的内容。</p></div>
+    <button id="library-folder-close" class="library-management-icon-button" type="button" aria-label="关闭"><i data-feather="x" aria-hidden="true"></i></button>
+  </header>
+  <div class="library-folder-picker-bar">
+    <button id="library-folder-up" class="library-management-button" type="button">返回上级</button>
+    <span id="library-folder-crumbs" class="library-privacy-crumbs"></span>
+  </div>
+  <ul id="library-folder-list" class="library-privacy-folders" aria-label="文件夹列表"></ul>
+  <button id="library-folder-clear" class="library-management-button" type="button">清除筛选（显示全部）</button>
+</dialog>
+
+<dialog id="library-trash-dialog" class="library-management-dialog library-trash-dialog" aria-labelledby="library-trash-heading">
+  <div class="library-dialog-heading">
+    <div><h2 id="library-trash-heading">回收站</h2><p>误删的资源可以恢复到原位置。</p></div>
+    <button id="library-trash-close" class="library-management-icon-button" type="button" aria-label="关闭回收站" title="关闭回收站"><i data-feather="x" aria-hidden="true"></i></button>
+  </div>
+  <div id="library-trash-toolbar" class="library-trash-toolbar">
+    <button id="library-trash-select-all" class="library-management-button" type="button">全选</button>
+    <button id="library-trash-restore-selected" class="library-management-button" type="button" disabled>恢复所选</button>
+    <button id="library-trash-empty" class="library-management-button is-danger" type="button">清空回收站</button>
+  </div>
+  <p id="library-trash-status" role="status" aria-live="polite">正在加载回收站…</p>
+  <ul id="library-trash-list" aria-label="回收站资源"></ul>
+  <button id="library-trash-retry" class="library-management-button" type="button" hidden>重新加载回收站</button>
+</dialog>
+
+<div id="quick-view" role="dialog" aria-label="媒体预览" aria-modal="true" aria-hidden="true">
+  <div id="quick-feed-layer">
+    <video id="quick-video" class="quick-media" playsinline preload="metadata"></video>
+    <img id="quick-image" class="quick-media" alt="媒体预览" />
+    <div id="quick-overlay"></div>
+    <div id="quick-play-status" aria-hidden="true"><svg id="quick-play-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></div>
+  </div>
+  <button id="quick-close-top" type="button" title="关闭预览" aria-label="关闭预览"><i data-feather="x" aria-hidden="true"></i></button>
+  <div class="quick-counter" id="quick-counter">1 / 1</div>
+  <div id="quick-controls" class="player-progress-controls is-hidden">
+    <div id="quick-progress-preview" class="player-seek-preview" hidden></div>
+    <span class="quick-time" id="quick-time-current">00:00</span>
+    <div class="quick-progress-wrap player-progress-track-wrap">
+      <input type="range" id="quick-progress" class="player-progress-input" min="0" max="100" step="0.1" value="0" aria-label="播放进度" />
+      <div class="quick-progress-track player-progress-track"></div>
+      <div class="quick-progress-fill player-progress-fill" id="quick-progress-fill"></div>
+    </div>
+    <span class="quick-time" id="quick-time-total">00:00</span>
+  </div>
+  <div class="quick-actions">
+    <button id="quick-speed" class="quick-btn" type="button" title="切换播放速度" aria-label="切换播放速度">1倍</button>
+    <button id="quick-caption" class="quick-btn" type="button" title="生成标题" aria-label="生成标题" hidden><i data-feather="zap" aria-hidden="true"></i></button>
+    <div class="quick-image-tool-wrap" id="quick-magnifier-tool-wrap" hidden>
+      <div class="quick-zoom-options" id="quick-zoom-options">
+        <button type="button" class="quick-zoom-btn active" data-level="2.5" aria-label="放大2.5倍">2.5倍</button>
+        <button type="button" class="quick-zoom-btn" data-level="5" aria-label="放大5倍">5倍</button>
+      </div>
+      <button id="quick-magnifier-toggle" class="quick-btn" type="button" title="放大镜" aria-label="放大镜"><i data-feather="search" aria-hidden="true"></i></button>
+    </div>
+    <button id="quick-favorite" class="quick-btn" type="button" title="添加收藏" aria-label="添加收藏"><i data-feather="heart" aria-hidden="true"></i></button>
+    <button id="quick-set-cover" class="quick-btn is-hidden" type="button" title="设为封面" aria-label="设为封面" hidden><i class="set-cover-default-icon" data-feather="image" aria-hidden="true"></i><i class="set-cover-current-icon" data-feather="check" aria-hidden="true"></i></button>
+    <a id="quick-source" class="quick-btn is-hidden" href="#" target="_blank" rel="noopener noreferrer" title="查看来源" aria-label="查看来源"><i data-feather="external-link" aria-hidden="true"></i></a>
+    <a id="quick-detail" class="quick-btn" href="#" title="查看详情" aria-label="查看详情"><i data-feather="info" aria-hidden="true"></i></a>
+    <button id="quick-delete" class="quick-btn" type="button" title="移到回收站" aria-label="将当前资源移到回收站"><i data-feather="trash-2" aria-hidden="true"></i></button>
+    <button id="quick-clean-btn" class="quick-btn" type="button" title="清屏播放" aria-label="清屏播放" aria-pressed="false"><i data-feather="eye-off" aria-hidden="true"></i></button>
+  </div>
+  <p id="quick-feedback" class="library-quick-feedback" role="status" aria-live="polite" hidden></p>
+  <button id="quick-clean-exit" class="player-clean-exit" type="button" title="退出清屏" aria-label="退出清屏" hidden><i data-feather="eye" aria-hidden="true"></i></button>
+  <div class="quick-caption-panel is-hidden" id="quick-caption-panel"><div class="quick-caption-title" id="quick-caption-title"></div><div class="quick-caption-tags" id="quick-caption-tags"></div></div>
+  <div class="quick-magnifier" id="quick-magnifier"><div class="quick-mag-badge" id="quick-mag-badge">2.5倍</div></div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script src="{{ static_asset('flow_ui_shared.js') }}"></script>
+<script src="{{ static_asset('player_progress_controller.js') }}"></script>
+<script src="{{ static_asset('flow_state_controller.js') }}"></script>
+<script src="{{ static_asset('flow_session.js') }}"></script>
+<script src="{{ static_asset('flow_actions_shared.js') }}"></script>
+<script src="{{ static_asset('flow_media_actions_controller.js') }}"></script>
+<script src="{{ static_asset('hammer.min.js') }}"></script>
+<script>
+  window.__SPOOLY_LIBRARY_BOOT__ = {
+    scope: {{ scope | tojson }},
+    collectionId: {{ collection_id | tojson }},
+    collectionCoverUri: {{ collection_cover_uri | tojson }},
+    pageSize: {{ page_size }},
+    initialItems: {{ initial_items | tojson }},
+    initialHasMore: {{ 'true' if initial_has_more or library_view | default('explore') == 'timeline' else 'false' }},
+    initialNextOffset: {{ initial_next_offset }},
+    initialMode: {{ active_mode | tojson }},
+    initialSeed: {{ mode_seed | tojson }},
+    minMb: {{ min_mb }},
+    emptyMessage: '媒体库还是空的。导入图片和视频，或重新扫描媒体目录。',
+    libraryView: 'explore',
+    timelineMonth: '',
+  };
+</script>
+<script src="{{ static_asset('caption_format.js') }}"></script>
+<script src="{{ static_asset('library_page_controller.js') }}"></script>
+<script src="{{ static_asset('library_management.js') }}"></script>
+<script src="{{ static_asset('library_batch_controller.js') }}"></script>
+<script src="{{ static_asset('library_collections_controller.js') }}"></script>
+<script src="{{ static_asset('media_sources_controller.js') }}"></script>
+{% endblock %}

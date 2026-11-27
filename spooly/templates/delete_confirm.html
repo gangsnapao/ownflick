@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="container" style="max-width:720px;">
+    <h1 class="title">确定删除文件“{{file}}”吗？</h1>
+    <p class="notification is-warning is-light">文件将移入回收站，不会直接永久删除。</p>
+    <form method="post">
+      {% if auth_enabled %}<input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">{% endif %}
+      <button type="submit" class="button">删除</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

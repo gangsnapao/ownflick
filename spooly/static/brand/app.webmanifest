@@ -1,0 +1,25 @@
+{
+  "name": "OwnFlick",
+  "short_name": "OwnFlick",
+  "description": "自托管媒体信息流与媒体库",
+  "start_url": "/flow",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#171815",
+  "background_color": "#0f1013",
+  "icons": [
+    {
+      "src": "/static/brand/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/brand/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

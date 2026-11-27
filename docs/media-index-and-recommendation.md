@@ -1,0 +1,128 @@
+# 媒体索引与本地推荐架构
+
+- 模块: Library Index / Recommendation / Thumbnail
+- 更新时间: 2026-11-26
+
+## 现状概述
+
+- Spooly 以文件系统作为媒体事实来源，以 `~/.spooly/spooly.sqlite3` 中的 `media_items` 作为页面查询索引。
+- `media_items` 同时缓存媒体时间、原始本地日期、时间来源与可信度；图片按 EXIF、文件名、文件时间的顺序解析，未变化文件复用已有结果。
+- Home Flow、Library、Favorites、Collections 与视频详情页共用规范媒体 URI：`@source_id/relative/path`。
+- Library、Favorites、Collections 的既有页面和 API 集中于 `web/library.py`，共用分页结果组装与页面渲染；应用入口仅构造并传入依赖。集合成员清理规则由 `services/collections.py` 统一维护，合集保留 JSON 存储；收藏兼容门面和新点赞状态统一使用 SQLite `media_reactions`。新增目录和受限流 API 位于 `web/browse.py`，双状态写入位于 `web/reactions.py`。
+- Web Radio 位于 `web/radio.py`；媒体详情、原文件传输、删除和缩略图入口位于 `web/media.py`。首页、设置页、库统计与缓存管理位于 `web/settings.py`，页面和统计 API 使用同一份统计组装。
+- 推荐保持轻量本地实现，使用收藏、完成、跳过、重播、近期曝光和媒体维度偏好参与排序，不依赖云端画像或任务系统。
+- Library 列表使用按需缩略图，Quick Viewer 与详情页才加载原始媒体。
+
+## 变更点
+
+- 应用每次启动都会扫描可用媒体源并校正索引，覆盖外部新增、修改、删除和重命名。
+- 每个来源一次遍历区分图片、视频、音频，扩展名不区分大小写。目录枚举或必要文件状态读取失败时，整个来源本轮不更新、不清理；其他完整扫描的来源正常同步。所有媒体源均不可用时 CLI 停止启动。
+- 下载的可识别媒体完成索引登记后才发布成功；登记失败保留文件及输出列表，重试仅重新登记，避免重复下载。下载 HTTP 入口集中于 `web/downloads.py`，应用构造不启动任务线程；服务显式启动管理器后接单，正常退出取消未完成任务并保留文件，异常退出仍按旧规则标记中断任务。`DownloadManager` 只负责任务状态和进程生命周期；工具命令与输出解析在 `download_tools.py`，来源记录与 info.json/文件名回退在 `download_sources.py`。
+- Flow 与 Library 默认按 24 条分页，避免为首屏提前创建过多媒体节点。
+- 图片和视频列表统一使用 `/thumb`；图片缩略图最长边为 640px，首次访问同步生成并缓存。
+- 缩略图读取时比较源文件 mtime，同名媒体被替换后会自动重建；删除媒体时同步删除对应缩略图。
+- 视频详情页的上一条/下一条导航读取媒体索引，不再重新扫描目录。
+- Radio 的选曲和列表都读取索引中的 audio，并过滤当前不存在的文件；外部新增音频在启动或手动同步后可见，下载输出登记后可见。选曲仍不探测音频标签，metadata 按原有入口懒读取。
+- Flow、Library、集合与相似结果复用媒体链接生成规则；相似结果的预览使用 `/thumb`，不再请求原图。
+- 公共链接与字段转换归入 `web/media_payloads.py`，Flow 混排和主题组装归入 `web/flow.py`；删除原 `view_builders.py`。内置 HTTPS 与 PWA 已下线，普通 HTTP/媒体 Range 保留，外部反向代理可提供 HTTPS。
+- 向量与相似分组实现位于 `experiments/similarity/`：配置、向量构建、分组、CLI 与 HTTP 入口集中维护。命令行按需加载；`experiments.similarity.enabled` 控制实验服务注册，关闭后核心无向量运行依赖。连接只从 `config.yaml` 读取，页面只读。浏览器与 `spooly vectorize` 共用同一流程：先图片后视频，完成后在本地重建图片分组。视频在时长的 20%、50%、80% 处抽取三帧，少于一秒的视频只取一帧，无法读取的帧会被跳过；抽帧使用临时目录，不改库内封面。每帧单独调用模型，全部完成后才原子保存；暂停在当前请求结束后生效，未完成视频下次从头准备。
+- `media_vectors` 每个文件一行；`video_frames` 保存连续排列的 768 维 float32 帧向量，`embedding` 保存归一化各帧后取平均的向量，二者在同一次写入中更新。`model` 列决定是否属于当前模型；换模型后逐个覆盖重建。旧视频记录没有帧向量，下次准备会更新，旧图片无需重新编码。准备完成前旧视频仍可使用原来的缩略图向量。
+- 图片和视频详情共用 `experiments/media-similarity.html`、`media-similarity.js` 与 `/api/recommend/similar`，接口按文件类型返回同类媒体。视频相似度按两边各帧的最佳匹配取双向平均，避免单个共同镜头主导排序；先用平均向量选出最多 48 个候选，再只对候选逐帧比较，不做全库两两比较。文字搜索中视频取与查询最接近的一帧计分，与图片分数可比。详情页读取已保存向量，不请求模型；视频自动分组尚未实现。
+
+## 接口与边界
+
+- `LibraryIndexer.sync()`：仅提交完整扫描来源的快照，以 `unavailable_sources` 和 `source_errors` 报告失败来源。全部失败时保留所有旧索引；完整扫描得到空库时允许正常清理。
+- `LibraryIndexer.register_uris()`：登记下载输出，缺失或不可访问的可识别媒体必须报错；忽略不属于媒体类型的附件。
+- `MediaIndexStore.page()`：统一普通、收藏和集合列表查询。SQL 处理常规筛选与分页，大文件按大小降序，再按 mtime 和 URI 确保稳定次序；集合保留成员次序；随机图片沿用固定候选排序和 seed 洗牌。
+- `MediaProbeWorker`：后台单线程读取图片和视频宽高，写入 `media_items.width/height`，以 `probed_mtime` 记录探测时的 mtime；文件变化后重新探测，探测失败也记录，不反复重试。启动、同步和下载登记后唤醒；列表请求只读 SQLite，不再在请求中运行 ffprobe。尚未探测的项返回空尺寸，Library 按默认比例占位，图片加载后改用实际比例。旧 `metadata.json` 中的尺寸缓存不再读取。
+- `ImageMetadataStore.update_many()`：在同一实例锁内重新读取、合并字段并原子写入，不在远程标题生成期间持锁。
+- `FavoriteService`：保留旧消费者接口，委托 SQLite `MediaReactionStore` 读写。点赞与收藏在 `BEGIN IMMEDIATE` 事务中独立更新，失败保留原状态；收藏 API 存储失败返回 503，Flow/Gallery 仍可回滚乐观状态并重试。
+- `RecommendService.get_weighted_selection()`：从媒体索引读取候选并执行轻量加权选择。
+- `ThumbnailService.get_thumbnail()`：读取有效缓存或同步生成单规格缩略图。
+- `ThumbnailService.get_radio_artwork()`：Web Radio 优先使用内嵌封面，再降级到生成封面；HTTP 入口保留访问校验。`cache_stats()` / `clear_cache()` 统一缓存目录操作，清理不删除媒体或映射。
+- `ThumbnailService.generate_thumbnail()`：CLI、Web 按需生成和手动选帧共用的生成入口；临时文件完成后原子替换缓存，失败保留已有缓存。CLI 默认优先时长 20% 处，Web 保留 5/1/0.1 秒尝试，显式选帧支持 0 秒。
+- `/api/feed/mix`：按 seed 混排并分页；候选和权重不变时可复现，主题与本页图集不改变基础媒体分页边界。
+- `/api/library/items`：返回媒体库分页数据。
+- `/api/library/timeline`：返回轻量年/月统计和每月代表媒体，不读取原图或同步探测尺寸。
+- `/api/library/sync`：手动触发与启动时相同的安全同步。
+- `/api/folders`：按索引目录及祖先逐级分页，返回直属/递归媒体数量与稳定封面。
+- `/api/feed`：按来源目录、递归与点赞/收藏状态限定候选，支持顺序、状态时间倒序或固定 seed 随机分页；不插入范围外推荐卡。新接口与迁移契约见 [Phase 2 后端 API](backend-api-phase2.md)。
+
+## 数据流与状态
+
+```text
+文件系统
+  → 启动/手动扫描
+  → media_items
+  → Library / Flow / Detail 查询
+
+浏览与收藏行为
+  → media_events
+  → media_affinity / preference_dimensions
+  → RecommendService 轻量排序
+
+媒体文件
+  → /thumb 首次访问
+  → 本地 JPEG 缓存
+  → Library / Feed 预览
+
+图片 / 视频文件
+  → EXIF / 文件名 / 文件时间
+  → captured_at / captured_local_date / time_source
+  → Timeline 年月聚合与月份详情
+```
+
+## 兼容性与迁移
+
+- 旧的裸相对路径继续映射到默认媒体源。
+- `/media?uri=...` 保留兼容；新生成的页面数据直接使用 `/media/<path>`，避免额外重定向。
+- 收藏、集合、行为记录和向量数据不会因媒体源暂时离线而被级联删除。
+- 点赞与收藏统一保存在 SQLite `media_reactions`。数据目录中的 `favorites.json` 在启动时一次性导入，原文件保留；导入与 `data_migrations` 标记原子提交，后续不再读写旧文件，防止已取消的收藏复活。旧数据无时间戳，使用迁移时刻；媒体目录中的更旧 `favorite.json` 仍不自动导入。
+- 新缩略图统一以规范 URI 计算缓存键。默认来源的旧裸路径缓存仅在源文件可访问、缓存非空且不早于源文件时复用；其他来源不复用裸路径缓存，避免同名资源串图。旧文件和 `thumbs.json` 保留，不做全量迁移。
+- CLI 生成、检查覆盖率与清理共用缩略图服务；单目录清理跳过未知来源和离线来源。手动选帧和删除操作使用同一规范缓存键。
+- 下载历史增加可选字段 `failure_stage`；`index` 表示文件已经下载、登记未完成，状态仍为 `failed`。原重试 API 复用同一任务完成登记；输出缺失则明确拒绝并提示重新创建下载任务。没有该字段的旧失败任务仍创建新的下载任务，重启仍将未完成任务标为失败。
+
+## 影响范围
+
+- 启动时间会包含一次完整文件扫描，但页面查询可以稳定使用 SQLite 索引。
+- 第一次访问未缓存缩略图时会发生同步生成，后续访问直接复用。
+- 推荐排序面向单机个人媒体库，优先可读性与维护成本，不计划引入 Celery、Redis 或云端推荐服务。
+
+## 风险与权衡
+
+- 暂时离线来源仍会出现在索引查询中，对应原始媒体在重新挂载前不可播放；保留索引可以避免误删用户状态。
+- 单规格缩略图不追求响应式图片的极限带宽收益，但能以较少代码显著降低列表原图传输和解码成本。
+- 推荐会读取较大的本地候选池；当前规模优先保持实现简单，只有出现真实瓶颈时再考虑缓存。
+- 随机浏览仍读取当前候选再洗牌，不承诺索引发生变化时跨页保持同一快照。
+- 尺寸缓存不可用时不阻断浏览；首次访问未缓存视频仍可能同步执行 FFprobe。这里没有引入后台任务系统。
+- 元数据等 JSON 存储仍依赖实例锁与原子替换，多个进程共用 JSON 不具备事务保证；收藏已改为 SQLite 事务，不再依赖 JSON 写锁。首次旧收藏导入遇到损坏文件时保留原内容并中止，不以空状态提交导入。
+
+## 后续事项
+
+- [ ] 结合实际媒体规模评估 Library 的筛选与排序信息架构。
+- [ ] 若缩略图缓存空间成为问题，再增加基于现有目录的简单清理策略。
+- [ ] 仅在明确出现查询瓶颈时，评估把更多媒体元数据迁入 `media_items`。
+
+## 相关文件/模块
+
+- `spooly/services/library_index.py`
+- `spooly/services/database.py`
+- `spooly/services/thumbnail.py`
+- `spooly/services/library.py`：来源、URI 和文件扫描。
+- `spooly/services/reactions.py`：SQLite 点赞/收藏状态、时间戳、旧 JSON 一次性导入与兼容批量保存。
+- `spooly/services/browse.py`、`spooly/web/browse.py`：索引目录树和受限信息流查询。
+- `spooly/web/reactions.py`：双状态写入 API。
+- `spooly/services/media_info.py`：按页尺寸读取与探测。
+- `spooly/services/metadata.py`：标题与尺寸的字段合并存储。
+- `spooly/services/captions.py`：正式命名配置、模型请求与生成编排；HTTP 入口见 `web/captions.py`。
+- `spooly/services/favorites.py`：旧收藏接口和消费者的 SQLite 兼容门面。
+- `spooly/services/json_storage.py`：元数据等 JSON 文件使用的原子替换。
+- `spooly/services/recommendation.py`：本地推荐权重。
+- `spooly/services/radio.py`：音频候选与电台选择。
+- `spooly/thumbs.py`：缩略图 CLI 编排。
+- `spooly/services/downloader.py`、`download_tools.py`、`download_sources.py`：下载任务、工具命令与来源解析。
+- `spooly/app.py`
+- `spooly/static/flow_page_controller.js`
+- `spooly/static/library_page_controller.js`
+- `tests/test_feed_mix.py`
+- `tests/test_library_upgrade.py`

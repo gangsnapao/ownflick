@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171815">
+  <link rel="icon" href="{{ static_asset('brand/favicon.ico') }}" sizes="32x32">
+  <link rel="icon" href="{{ static_asset('brand/favicon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ static_asset('brand/apple-touch-icon.png') }}">
+  <title>登录 OwnFlick · {{ instance_name }}</title>
+  <link rel="stylesheet" href="{{ static_asset('login.css') }}">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-scene" aria-label="OwnFlick 私人媒体空间">
+      <div class="scene-top">
+        <div class="wordmark"><img src="{{ static_asset('brand/ownflick-lockup-dark.svg') }}" alt="OwnFlick" width="165"></div>
+        <span class="scene-index">私密 / 01</span>
+      </div>
+      <div class="scene-copy">
+        <p class="scene-kicker">专属你的私人空间</p>
+        <h1>此刻<em>只属于你。</em></h1>
+      </div>
+      <div class="scene-foot">
+        <span class="private-signal">本地媒体空间已锁定</span>
+        <span>信息流 · 媒体库</span>
+      </div>
+    </section>
+
+    <section class="login-panel" aria-labelledby="login-title">
+      <div class="login-card">
+        <div class="login-overline"><span>访问入口</span><span>OWNFLICK</span></div>
+        <h2 id="login-title">欢迎回来。</h2>
+        <p class="login-intro">输入此 OwnFlick 实例的访问密码，继续浏览你的媒体。</p>
+
+        <form method="post" action="{{ url_for('login_view') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_value }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          {% if error %}<div class="login-error" role="alert">{{ error }}</div>{% endif %}
+          <label class="field-label" for="password">访问密码</label>
+          <div class="password-field">
+            <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="login-help">
+            <button class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+            </button>
+          </div>
+          <div class="login-options">
+            <label class="remember"><input type="checkbox" name="remember" value="1" checked><span>在此设备上保持登录</span></label>
+            <span class="local-note">私人局域网</span>
+          </div>
+          <button class="login-submit" type="submit"><span>登录 OwnFlick</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </form>
+        <p class="login-help" id="login-help">忘记密码？请在运行 OwnFlick 的电脑上执行 <code>ownflick auth set-password</code>。</p>
+      </div>
+    </section>
+  </main>
+  <script src="{{ static_asset('login_page_controller.js') }}"></script>
+</body>
+</html>

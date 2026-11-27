@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>{% if menu == 'flow' %}信息流{% elif menu == 'library' %}媒体库{% else %}媒体详情{% endif %} · OwnFlick</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#171815" />
+    <link rel="icon" href="{{ static_asset('brand/favicon.ico') }}" sizes="32x32">
+    <link rel="icon" href="{{ static_asset('brand/favicon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ static_asset('brand/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ static_asset('brand/app.webmanifest') }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OwnFlick">
+    {% if auth_enabled %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endif %}
+    <link rel="stylesheet" type="text/css" href="{{ static_asset('output.css') }}">
+    <script src="{{ static_asset('feather.min.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ static_asset('ui_feedback.css') }}">
+    <script src="{{ static_asset('ui_feedback.js') }}"></script>
+    <script src="{{ static_asset('playback_resume.js') }}"></script>
+    <script src="{{ static_asset('page_transitions.js') }}"></script>
+    {% if auth_enabled %}<script src="{{ static_asset('csrf_fetch.js') }}"></script>{% endif %}
+    <link rel="stylesheet" href="{{ static_asset('base.css') }}">
+    {% block extra_head %}{% endblock %}
+    <link rel="stylesheet" type="text/css" href="{{ static_asset('app_navigation.css') }}">
+  </head>
+  <body data-theme="{{ theme if theme else 'light' }}" data-nav-context="{{ menu or 'default' }}" class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen transition-colors duration-300">
+    <div id="pwa-install-hint" class="pwa-install-hint" hidden>
+      <span class="pwa-install-hint-text">📱 把 OwnFlick 添加到主屏幕，随时一键打开</span>
+      <button id="pwa-install-dismiss" class="pwa-install-dismiss" type="button" aria-label="关闭添加到主屏提示">知道了</button>
+    </div>
+    <header class="mobile-app-header {% if menu != 'flow' %}is-utility-page{% endif %}" aria-label="应用导航">
+      <nav class="mobile-mode-switch" aria-label="主要功能">
+        <a href="/" class="mobile-mode-link {% if menu == 'flow' %}is-active{% endif %}" {% if menu == 'flow' %}aria-current="page"{% endif %}>信息流</a>
+        <a href="/library" class="mobile-mode-link {% if menu == 'library' %}is-active{% endif %}" {% if menu == 'library' %}aria-current="page"{% endif %}>媒体库</a>
+      </nav>
+      <button id="app-nav-menu-trigger" class="mobile-nav-trigger" type="button" aria-label="打开导航菜单" aria-expanded="false" aria-controls="app-nav-menu">
+        <i data-feather="menu"></i>
+      </button>
+    </header>
+    <nav class="floating-dock" aria-label="主导航">
+      <a class="rail-brand" href="/" aria-label="打开信息流">{% include 'brand_mark.html' %}</a>
+      <a href="/" class="dock-item {% if menu == 'flow' %}active{% endif %}" data-label="信息流" aria-label="信息流" {% if menu == 'flow' %}aria-current="page"{% endif %}>
+        <i data-feather="play-circle"></i><span class="rail-tooltip">信息流</span>
+      </a>
+      <a href="/library" class="dock-item {% if menu == 'library' %}active{% endif %}" data-label="媒体库" aria-label="媒体库" {% if menu == 'library' %}aria-current="page"{% endif %}>
+        <i data-feather="grid"></i><span class="rail-tooltip">媒体库</span>
+      </a>
+      <div class="rail-spacer"></div>
+      {% if auth_enabled %}
+      <form method="post" action="{{ url_for('logout_view') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button class="dock-item" type="submit" data-label="退出登录" aria-label="退出登录"><i data-feather="log-out"></i><span class="rail-tooltip">退出登录</span></button>
+      </form>
+      {% endif %}
+    </nav>
+    <div id="app-nav-menu" class="app-nav-menu" aria-hidden="true" inert>
+      <nav class="app-nav-menu-card" aria-label="功能菜单">
+        <div class="app-nav-menu-handle" aria-hidden="true"></div>
+        <div class="app-nav-menu-label">我的媒体</div>
+        <div class="app-nav-menu-list">
+          <a href="/" class="app-nav-menu-item {% if menu == 'flow' %}is-active{% endif %}"><i data-feather="play-circle"></i><span>信息流</span></a>
+          <a href="/library" class="app-nav-menu-item {% if menu == 'library' %}is-active{% endif %}"><i data-feather="grid"></i><span>媒体库</span></a>
+          {% if auth_enabled %}
+          <form method="post" action="{{ url_for('logout_view') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button class="app-nav-menu-item" type="submit" aria-label="退出登录"><i data-feather="log-out"></i><span>退出登录</span></button>
+          </form>
+          {% endif %}
+        </div>
+      </nav>
+    </div>
+    {% block content %}{% endblock %}
+    {% block extra_body %}{% endblock %}
+    <script src="{{ static_asset('base.js') }}"></script>
+  </body>
+</html>

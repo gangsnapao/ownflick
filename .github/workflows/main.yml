@@ -1,0 +1,236 @@
+name: Test, build & publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      retry_release:
+        description: Retry the current version's OwnFlick upload and image publication
+        required: false
+        default: false
+        type: boolean
+      publish_image_only:
+        description: Publish GHCR images without retrying PyPI
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# Replace outdated development checks; let release runs finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+env:
+  POETRY_VIRTUALENVS_IN_PROJECT: "true"
+  POETRY_NO_INTERACTION: "true"
+
+jobs:
+  check:
+    name: Test & build (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: "3.12"
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+          key: ${{ runner.os }}-python-${{ steps.python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+      - name: Install dependencies
+        run: |
+          python -m pip install poetry
+          poetry install
+      - name: Run tests
+        run: poetry run pytest -q
+      - name: Check matching release versions
+        run: |
+          python - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          root = tomllib.loads(Path('pyproject.toml').read_text())['tool']['poetry']['version']
+          alias = tomllib.loads(Path('distribution/ownflick-pypi/pyproject.toml').read_text())['tool']['poetry']
+          npm = json.loads(Path('package.json').read_text())['version']
+          assert root == alias['version'] == npm
+          assert alias['dependencies']['spooly'] == f'=={root}'
+          PY
+      - name: Build Spooly and OwnFlick wheels & sdists
+        run: |
+          poetry build --output dist/spooly
+          poetry --directory distribution/ownflick-pypi build --output ../../dist/ownflick
+      - name: Save release packages
+        if: github.event_name == 'release' || inputs.retry_release
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-dists
+          path: dist/
+
+  compatibility:
+    name: Release compatibility (Python 3.10)
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: "3.10"
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+          key: ${{ runner.os }}-python-${{ steps.python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
+      - name: Install dependencies
+        run: |
+          python -m pip install poetry
+          poetry install
+      - name: Run tests
+        run: poetry run pytest -q
+
+  publish-spooly-pypi:
+    name: Publish Spooly compatibility package
+    if: github.event_name == 'release'
+    needs: [check, compatibility, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: pypi
+      url: https://pypi.org/project/spooly/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-package-dists
+          path: dist/
+      - name: Publish wheel & sdist
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
+        with:
+          packages-dir: dist/spooly/
+
+  publish-ownflick-pypi:
+    name: Publish OwnFlick to PyPI
+    if: >-
+      always() &&
+      ((github.event_name == 'release' && needs.publish-spooly-pypi.result == 'success') ||
+      (inputs.retry_release && needs.check.result == 'success' && needs.docker.result == 'success'))
+    needs: [check, docker, publish-spooly-pypi]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ownflick/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-package-dists
+          path: dist/
+      - name: Publish wheel & sdist
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
+        with:
+          packages-dir: dist/ownflick/
+          skip-existing: ${{ inputs.retry_release || false }}
+          verbose: ${{ inputs.retry_release || false }}
+
+  docker:
+    name: Docker image smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t spooly:ci .
+      - name: Start against a sample library
+        run: |
+          mkdir -p sample/media sample/data
+          cp spooly/static/brand/apple-touch-icon.png sample/media/
+          sudo chown -R 1000:1000 sample
+          docker run -d --name spooly -p 8000:8000 \
+            -e SPOOLY_AUTH_PASSWORD=ci-smoke-test-password \
+            -v "$PWD/sample/media:/media" -v "$PWD/sample/data:/data" spooly:ci
+          for _ in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' spooly)" = healthy ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' spooly | grep -qx healthy
+      - name: Check the server and bundled tools
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/login)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/library/stats)" = 401
+          docker exec spooly sh -c 'ffmpeg -version && ffprobe -version && yt-dlp --version && gallery-dl --version && deno --version' > /dev/null
+          docker stop spooly
+          test "$(docker inspect -f '{{.State.ExitCode}}' spooly)" = 0
+      - name: Show container logs
+        if: failure()
+        run: docker logs spooly
+
+  publish-image:
+    name: Publish image to GHCR
+    if: >-
+      always() && needs.docker.result == 'success' &&
+      (needs.publish-ownflick-pypi.result == 'success' || inputs.publish_image_only)
+    needs: [publish-ownflick-pypi, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Read package version
+        id: version
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path('pyproject.toml').read_text())['tool']['poetry']['version']
+          print(f'full={version}')
+          print(f'minor={".".join(version.split(".")[:2])}')
+          PY
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ghcr.io/oddloafhq/spooly
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ steps.version.outputs.full }},enable=${{ inputs.retry_release || inputs.publish_image_only || false }}
+            type=raw,value=${{ steps.version.outputs.minor }},enable=${{ inputs.retry_release || inputs.publish_image_only || false }}
+            type=raw,value=latest
+      - name: Build and push linux/amd64 and linux/arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

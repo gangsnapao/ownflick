@@ -1,0 +1,29 @@
+{
+  "name": "ownflick",
+  "version": "0.8.51",
+  "description": "A private, self-hosted feed for your videos, photos, and music",
+  "scripts": {
+    "build-css": "tailwindcss -i ./spooly/static/input.css -o ./spooly/static/output.css --watch",
+    "build-css-prod": "tailwindcss -i ./spooly/static/input.css -o ./spooly/static/output.css --minify",
+    "dev": "npm run build-css",
+    "build": "npm run build-css-prod"
+  },
+  "devDependencies": {
+    "daisyui": "^5.7.48",
+    "playwright-core": "^1.63.0",
+    "tailwindcss": "^4.3.0"
+  },
+  "keywords": [
+    "ownflick",
+    "spooly",
+    "tiktok",
+    "pinterest",
+    "media-server",
+    "flask"
+  ],
+  "author": "Oddloaf <hello@oddloaf.dev>",
+  "license": "MIT",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.3.0"
+  }
+}
